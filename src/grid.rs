@@ -2,9 +2,9 @@ use std::ops::{Deref, DerefMut, Index, IndexMut};
 
 use crate::I;
 
+/* CONVENIENCE CLASS FOR WORKING WITH A FLATTENED 2-D GRID */
 
 pub type GridIdx = (I, I);
-
 
 pub struct Grid<T> {
     pub data: Vec<T>,

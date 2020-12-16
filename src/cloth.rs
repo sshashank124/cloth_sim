@@ -11,9 +11,16 @@ use crate::{
     *,
 };
 
+// NUMBER OF STEPS IN ITERATIVE CONSTRAINT SOLVING
 const CONSTRAINTS_ITER: I = 10;
+
+// ENERGY DAMPING TO APPLY TO SYSTEM WHEN PERFORMING VERLET POSITION INTEGRATION
 const DAMPING: F = 0.995;
+
+// GRID RESOLUTION OF THE CLOTH: SUBDIVISIONS x SUBDIVISIONS
 const SUBDIVISIONS: I = 30;
+
+// THRESHOLD FOR COLLISION CHECKING
 const EPSILON: F = 0.3;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -49,7 +56,7 @@ impl Particle {
     fn step(&mut self) {
         if !self.fixed {
             let tmp = self.p;
-            // Verlet Integration
+            /* VERLET POSITION INTEGRATION */
             self.p += DAMPING * (self.p - self.old_p) + self.a * DT_SQ;
             self.old_p = tmp;
             self.a = zero();
@@ -95,6 +102,7 @@ impl Cloth {
             .collect();
         let mut particles = Grid::new(parts, SUBDIVISIONS);
 
+        /* SET 4 CORNERS TO BE FIXED AT SIMULATION START */
         particles[(0, 0)].fixed = true;
         particles[(1, 0)].fixed = true;
         particles[(SUBDIVISIONS - 2, 0)].fixed = true;
@@ -104,19 +112,23 @@ impl Cloth {
         particles[(SUBDIVISIONS - 2, SUBDIVISIONS - 1)].fixed = true;
         particles[(SUBDIVISIONS - 1, SUBDIVISIONS - 1)].fixed = true;
 
+        /* CREATE CONSTRAINTS (AKA SPRINGS IN THE MASS-SPRING SYSTEM) */
         let mut cs = vec![];
         for y in 0..SUBDIVISIONS {
             for x in 0..SUBDIVISIONS {
+                /* STRUCTURAL SPRINGS */
                 if x < SUBDIVISIONS - 1 {
                     cs.push(Constraint::new((x, y), (x + 1, y), &particles));
                 }
                 if y < SUBDIVISIONS - 1 {
                     cs.push(Constraint::new((x, y), (x, y + 1), &particles));
                 }
+                /* SHEAR SPRINGS */
                 if x < SUBDIVISIONS - 1 && y < SUBDIVISIONS - 1 {
                     cs.push(Constraint::new((x, y), (x + 1, y + 1), &particles));
                     cs.push(Constraint::new((x + 1, y), (x, y + 1), &particles));
                 }
+                /* FLEXION SPRINGS */
                 if x < SUBDIVISIONS - 2 {
                     cs.push(Constraint::new((x, y), (x + 2, y), &particles));
                 }
@@ -183,6 +195,7 @@ impl Cloth {
     }
 
     pub fn step(&mut self) {
+        /* ITERATIVELY RESOLVE SPRING CONSTRAINTS */
         for _ in 0..CONSTRAINTS_ITER {
             for constraint in &self.constraints {
                 let p12 = self.particles[constraint.p2].p - self.particles[constraint.p1].p;
@@ -193,10 +206,15 @@ impl Cloth {
             }
         }
 
+        /* RESOLVE EXTERNAL FORCES ON THE PARTICLES */
         self.particles.iter_mut().for_each(Particle::step);
 
         let mut mods = vec![];
 
+        /* EXPENSIVE POINT-FACE COLLISION CHECKING */
+        /* SHOULD UPDATE EPSILON TO BE 0.1 FOR THIS MODE */
+        /* ALSO WORKS CLOSE TO REAL-TIME WITH <20x20 GRID */
+        /* UNCOMMENT THE 2 IMPORT STATEMENTS AT THE TOP FOR THIS MODE */
         // for (i, p) in self.particles.iter().enumerate() {
         //     for (p1, p2, p3) in (0..SUBDIVISIONS - 1)
         //         .flat_map(|y| {
@@ -224,6 +242,10 @@ impl Cloth {
         //     }
         // }
 
+        /* OR */
+        /* CHEAP POINT-POINT COLLISION CHECKING */
+        /* SHOULD UPDATE EPSILON TO BE 0.3 FOR THIS MODE */
+        /* WORKS WELL IN REALTIME EVEN UP TO 50+ BY 50+ GRID */
         for (i1, p1) in self.particles.iter().enumerate() {
             for (i2, p2) in self.particles.iter().skip(i1).enumerate() {
                 let diff = p2.p - p1.p;
@@ -237,9 +259,21 @@ impl Cloth {
             }
         }
 
+        /* APPLY IMPULSE RESPONSES FOR ABOVE COMPUTED COLLISION CHECKS */
         for (idx, delta) in mods {
             self.particles.data[idx].offset(delta);
         }
+    }
+
+    /* SET 8 NEAREST POINTS TO SELECTED REGION TO BE FIXED IN SPACE */
+    /* USES QUICKSORT LAZYSORING TO AVOID UNNECESSARY SORTING */
+    pub fn set_fixed(&mut self, p: P, fixed: bool) {
+        self.particles
+            .iter_mut()
+            .map(|v| ((v.p - p).norm_squared(), v))
+            .sorted_by(|(a, _), (b, _)| a.partial_cmp(b).unwrap_or(Equal))
+            .take(8)
+            .for_each(|(_, v)| v.fixed = fixed);
     }
 
     pub fn update_mesh(&self, mesh: &mut Mesh) {
@@ -249,14 +283,5 @@ impl Cloth {
             .map(|p| [p.p.x, p.p.y, p.p.z])
             .collect::<Vec<_>>();
         mesh.set_attribute(Mesh::ATTRIBUTE_POSITION, positions.into());
-    }
-
-    pub fn set_fixed(&mut self, p: P, fixed: bool) {
-        self.particles
-            .iter_mut()
-            .map(|v| ((v.p - p).norm_squared(), v))
-            .sorted_by(|(a, _), (b, _)| a.partial_cmp(b).unwrap_or(Equal))
-            .take(8)
-            .for_each(|(_, v)| v.fixed = fixed);
     }
 }

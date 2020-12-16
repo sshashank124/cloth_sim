@@ -16,6 +16,8 @@ type F = f32;
 type P = Point3<F>;
 type V = Vector3<F>;
 
+
+/* TIME-STEP SIZE */
 const DT: F = 0.05;
 const DT_SQ: F = DT * DT;
 
@@ -31,13 +33,23 @@ fn main() {
         .run();
 }
 
+/* SIMULATE SINGLE STEP */
 fn step(mut meshes: ResMut<Assets<Mesh>>, mut cloth: Mut<Cloth>) {
+    // add gravity (negative y direction)
     cloth.add_force(V::new(0., -0.2, 0.));
+
+    // add some random crosswind
     cloth.add_force(V::new(0., 0., rand::thread_rng().gen_range(-0.1, 0.1)));
+
+    // simulate single step
     cloth.step();
+
+    // update mesh for displaying based on the simulated step
     let mesh = meshes.get_mut(&cloth.mesh_handle).unwrap();
     cloth.update_mesh(mesh);
 }
+
+/* BOILERPLATE CODE FOR UI INITIALIZATION AND INTERACTION */
 
 fn interact(mbi: Res<Input<MouseButton>>, (mut cloth, entity): (Mut<Cloth>, &PickableMesh)) {
     let lmb = mbi.pressed(MouseButton::Left);
